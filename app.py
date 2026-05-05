@@ -4,79 +4,77 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import google.generativeai as genai
 
-st.set_page_config(page_title="Classificador Expert", layout="wide")
-st.title("🎯 Classificador de Categorias")
+# CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(page_title="Classificador Híbrido Estável", layout="wide")
+st.title("🛡️ Classificador Inteligente (Lógica + IA)")
 
 # GESTÃO DA API KEY
 api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
 
 if api_key:
-    # Configuração Ultra-Estável
     genai.configure(api_key=api_key.strip())
+
+# DICIONÁRIO DE REGRAS (Lógica local - Funciona sempre!)
+MAPA_LOGICO = {
+    "American Football": ["nfl", "jets", "giants", "super-bowl", "college-football"],
+    "Baseball": ["mlb", "yankees", "mets", "world-series"],
+    "Basket": ["nba", "knicks", "nets", "basketball"],
+    "Hockey": ["nhl", "rangers", "islanders", "devils"],
+    "Politics": ["politics", "elections", "white-house", "congress", "senate"],
+    "Celebrities": ["p6", "page-six", "celebrity", "hollywood", "gossip"],
+    "Technology": ["tech", "gadgets", "ai", "iphone", "android"],
+    "Business": ["business", "economy", "money", "stocks", "finance"]
+}
 
 LABELS = "Adult, American Football, Animals, Anime, Auto, Baseball, Basket, Beauty, Betting, Blog, Business, Casino, Celebrities, Chat Groups, Combat, Cosmetics, Cricket, Crypto, Culinary, Dating, Deco/Arch, E-Commerce, Education, Entertainment, Esoteric, Esports, Fashion, File Sharing, Finance, Football, Games, Golf, Health, Hockey, Horses, Humor, Jobs, Judicial, Legal, Lifestyle, Literature, Loans/Credits, Lottery, Marketing, MMA, Motorsports, Music, News, Politics, Quotes, Radio, Religion, Rugby, Sports, streaming, Technology, Tennis, Tourism, Weather, Well-Being"
 
+def classificar_por_logica(url):
+    url_lower = url.lower()
+    for label, keywords in MAPA_LOGICO.items():
+        if any(key in url_lower for key in keywords):
+            return label
+    return None
+
 def get_clean_sections(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
         domain = urlparse(url).netloc
-        
-        # Filtro de links inúteis
-        ignore_list = ['/author/', '/contact', '/settings', '/subscribe', '/privacy', '/terms', '/login', '/about', '/newsletter']
+        ignore_list = ['/author/', '/contact', '/settings', '/subscribe', '/privacy', '/terms', '/login', '/about']
         
         links = set()
         for a in soup.find_all('a', href=True):
             full_url = urljoin(url, a['href']).split('?')[0].split('#')[0].rstrip('/')
             parsed = urlparse(full_url)
-            
             if parsed.netloc == domain and not any(x in full_url for x in ignore_list):
                 path_parts = [p for p in parsed.path.split('/') if p]
-                # Apanha apenas categorias (1 ou 2 níveis de profundidade)
                 if 1 <= len(path_parts) <= 2:
                     links.add(full_url)
         return sorted(list(links))
     except: return []
 
-url_input = st.text_input("URL do Site (ex: https://nypost.com):")
+url_input = st.text_input("URL do Site:")
 
-if st.button("Classificar com Precisão"):
-    if not api_key:
-        st.error("Insere a API Key!")
-    elif url_input:
-        with st.spinner("A analisar site..."):
+if st.button("Classificar"):
+    if url_input:
+        with st.spinner("A processar..."):
             seccoes = get_clean_sections(url_input)
-            
             if seccoes:
-                st.info(f"Filtrados {len(seccoes)} links. A chamar IA...")
-                
-                try:
-                    # Forçamos a escolha do modelo estável
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    
-                    prompt = f"""
-                    Age como um Taxonomista de Conteúdo. 
-                    Atribui a label mais específica da lista: [{LABELS}]
-                    
-                    REGRAS:
-                    - /jets/, /giants/, /nfl/ -> 'American Football'
-                    - /yankees/, /mets/, /mlb/ -> 'Baseball'
-                    - /knicks/, /nets/, /nba/ -> 'Basket'
-                    - /p6/, /page-six/ -> 'Celebrities'
-                    - /media/ -> 'Marketing'
-                    - Se for política, usa 'Politics' (mesmo que esteja em News).
-                    
-                    Formato: URL - LABEL
-                    
-                    LISTA:
-                    """ + "\n".join(seccoes[:60])
-                    
-                    res = model.generate_content(prompt)
-                    st.subheader("Resultados:")
-                    st.markdown(res.text)
-                except Exception as e:
-                    st.error(f"Erro na IA: {e}")
-                    st.info("Dica: Se o erro persistir, tenta mudar 'gemini-1.5-flash' para 'gemini-pro' no código.")
-            else:
-                st.error("Nenhum link útil encontrado.")
+                resultados_finais = []
+                urls_para_ia = []
+
+                # PASSO 1: Tenta Lógica Local (Grátis e sem erro 404)
+                for url in seccoes:
+                    label = classificar_por_logica(url)
+                    if label:
+                        resultados_finais.append(f"{url} - **{label}** (Lógica)")
+                    else:
+                        urls_para_ia.append(url)
+
+                # PASSO 2: IA Fallback
+                if urls_para_ia and api_key:
+                    try:
+                        # Forçamos o modelo sem listar, para evitar o erro 404
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        prompt = f"Labels: {LABELS}\nClassifica:\n" + "\n".join(urls_para_ia[:30])
