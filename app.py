@@ -52,7 +52,8 @@ def get_clean_sections(url):
                 if 1 <= len(path_parts) <= 2:
                     links.add(full_url)
         return sorted(list(links))
-    except: return []
+    except:
+        return []
 
 url_input = st.text_input("URL do Site:")
 
@@ -64,7 +65,7 @@ if st.button("Classificar"):
                 resultados_finais = []
                 urls_para_ia = []
 
-                # PASSO 1: Tenta Lógica Local (Grátis e sem erro 404)
+                # PASSO 1: Tenta Lógica Local
                 for url in seccoes:
                     label = classificar_por_logica(url)
                     if label:
@@ -73,8 +74,4 @@ if st.button("Classificar"):
                         urls_para_ia.append(url)
 
                 # PASSO 2: IA Fallback
-                if urls_para_ia and api_key:
-                    try:
-                        # Forçamos o modelo sem listar, para evitar o erro 404
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                        prompt = f"Labels: {LABELS}\nClassifica:\n" + "\n".join(urls_para_ia[:30])
+                if urls_para_ia:
