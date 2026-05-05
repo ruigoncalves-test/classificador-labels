@@ -75,3 +75,9 @@ if st.button("Classificar"):
 
                 # PASSO 2: IA Fallback
                 if urls_para_ia:
+                    if api_key:
+                        try:
+                            model = genai.GenerativeModel('gemini-1.5-flash')
+                            prompt = f"Labels: {LABELS}\nClassifica:\n" + "\n".join(urls_para_ia[:30])
+                            res = model.generate_content(prompt)
+                            resultados
