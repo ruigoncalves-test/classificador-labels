@@ -4,16 +4,16 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import google.generativeai as genai
 
-# 1. CONFIGURAÇÃO DA PÁGINA
+# CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Classificador Pro", layout="wide")
 st.title("🛡️ Classificador Inteligente (Lógica + IA)")
 
-# 2. GESTÃO DA API KEY
+# GESTÃO DA API KEY
 api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
 if api_key:
     genai.configure(api_key=api_key.strip())
 
-# 3. DICIONÁRIO DE REGRAS (Lógica local)
+# DICIONÁRIO DE REGRAS
 MAPA_LOGICO = {
     "American Football": ["nfl", "jets", "giants", "super-bowl", "college-football"],
     "Baseball": ["mlb", "yankees", "mets", "world-series"],
@@ -53,7 +53,6 @@ def get_clean_sections(url):
     except:
         return []
 
-# 4. INTERFACE
 url_input = st.text_input("URL do Site:")
 
 if st.button("Classificar"):
@@ -65,14 +64,12 @@ if st.button("Classificar"):
             if seccoes:
                 resultados_finais = []
                 urls_para_ia = []
-
                 for url in seccoes:
                     label = classificar_por_logica(url)
                     if label:
                         resultados_finais.append(f"{url} - **{label}** (Lógica)")
                     else:
                         urls_para_ia.append(url)
-
                 if urls_para_ia:
                     if api_key:
                         try:
@@ -89,8 +86,8 @@ if st.button("Classificar"):
                     else:
                         for u in urls_para_ia:
                             resultados_finais.append(f"{u} - **News** (Sem API)")
-
                 st.subheader("Resultados:")
                 for r in resultados_finais:
                     st.write(r)
             else:
+                st.error("Nenhum link encontrado.")
