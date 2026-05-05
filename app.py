@@ -8,10 +8,9 @@ st.set_page_config(page_title="Classificador Expert", layout="wide")
 st.title("🎯 Classificador de Categorias")
 
 # GESTÃO DA API KEY
-api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
+api_key = st.sidebar.text_input("Gemini API Key:", type="password") or st.secrets.get("GEMINI_API_KEY")
 
 if api_key:
-    # Configuração Ultra-Estável
     genai.configure(api_key=api_key.strip())
 
 LABELS = "Adult, American Football, Animals, Anime, Auto, Baseball, Basket, Beauty, Betting, Blog, Business, Casino, Celebrities, Chat Groups, Combat, Cosmetics, Cricket, Crypto, Culinary, Dating, Deco/Arch, E-Commerce, Education, Entertainment, Esoteric, Esports, Fashion, File Sharing, Finance, Football, Games, Golf, Health, Hockey, Horses, Humor, Jobs, Judicial, Legal, Lifestyle, Literature, Loans/Credits, Lottery, Marketing, MMA, Motorsports, Music, News, Politics, Quotes, Radio, Religion, Rugby, Sports, streaming, Technology, Tennis, Tourism, Weather, Well-Being"
@@ -20,10 +19,10 @@ def get_clean_sections(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status() # Garante que o request foi bem sucedido
         soup = BeautifulSoup(r.text, 'html.parser')
         domain = urlparse(url).netloc
         
-        # Filtro de links inúteis
         ignore_list = ['/author/', '/contact', '/settings', '/subscribe', '/privacy', '/terms', '/login', '/about', '/newsletter']
         
         links = set()
@@ -33,11 +32,12 @@ def get_clean_sections(url):
             
             if parsed.netloc == domain and not any(x in full_url for x in ignore_list):
                 path_parts = [p for p in parsed.path.split('/') if p]
-                # Apanha apenas categorias (1 ou 2 níveis de profundidade)
                 if 1 <= len(path_parts) <= 2:
                     links.add(full_url)
         return sorted(list(links))
-    except: return []
+    except Exception as e:
+        st.error(f"Erro ao acessar a URL: {e}")
+        return []
 
 url_input = st.text_input("URL do Site (ex: https://nypost.com):")
 
@@ -52,7 +52,6 @@ if st.button("Classificar com Precisão"):
                 st.info(f"Filtrados {len(seccoes)} links. A chamar IA...")
                 
                 try:
-                    # Forçamos a escolha do modelo estável
                     model = genai.GenerativeModel('gemini-1.5-flash')
                     
                     prompt = f"""
@@ -77,6 +76,5 @@ if st.button("Classificar com Precisão"):
                     st.markdown(res.text)
                 except Exception as e:
                     st.error(f"Erro na IA: {e}")
-                    st.info("Dica: Se o erro persistir, tenta mudar 'gemini-1.5-flash' para 'gemini-pro' no código.")
             else:
-                st.error("Nenhum link útil encontrado.")
+                st.error("Nenhum link útil encontrado ou erro de conexão.")
