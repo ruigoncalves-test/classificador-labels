@@ -4,8 +4,8 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import google.generativeai as genai
 
-st.set_page_config(page_title="Classificador de Alta Precisão", layout="wide")
-st.title("🎯 Classificador de Categorias (Modo Expert)")
+st.set_page_config(page_title="Classificador Expert", layout="wide")
+st.title("🎯 Classificador de Categorias")
 
 # GESTÃO DA API KEY
 api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
@@ -17,75 +17,45 @@ LABELS = "Adult, American Football, Animals, Anime, Auto, Baseball, Basket, Beau
 
 def get_clean_sections(url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(r.text, 'html.parser')
         domain = urlparse(url).netloc
-        
-        # Palavras a ignorar para limpar o lixo
-        ignore_list = [
-            '/author/', '/contact', '/settings', '/subscribe', '/login', '/account', 
-            '/help', '/privacy', '/terms', '/newsletter', '/sitemap', '/advertise',
-            '/about', '/search', '/tips', '/covers', '/archives', '/apps'
-        ]
+        ignore_list = ['/author/', '/contact', '/settings', '/subscribe', '/privacy', '/terms', '/login', '/about']
         
         links = set()
         for a in soup.find_all('a', href=True):
             full_url = urljoin(url, a['href']).split('?')[0].split('#')[0].rstrip('/')
             parsed = urlparse(full_url)
-            
-            # Filtros de relevância
-            if parsed.netloc == domain:
-                # Se não estiver na lista de ignorados e tiver uma estrutura de categoria
-                if not any(x in full_url for x in ignore_list):
-                    path_parts = [p for p in parsed.path.split('/') if p]
-                    # Foca em categorias (1 nível) ou subcategorias (2 níveis)
-                    if 1 <= len(path_parts) <= 2:
-                        links.add(full_url)
-        
+            if parsed.netloc == domain and not any(x in full_url for x in ignore_list):
+                path_parts = [p for p in parsed.path.split('/') if p]
+                if 1 <= len(path_parts) <= 2:
+                    links.add(full_url)
         return sorted(list(links))
-    except:
-        return []
+    except: return []
 
-url_input = st.text_input("URL do Site:", placeholder="https://nypost.com")
+url_input = st.text_input("URL do Site:")
 
-if st.button("Classificar com Precisão"):
+if st.button("Classificar"):
     if not api_key:
         st.error("Insere a API Key!")
     elif url_input:
-        with st.spinner("A filtrar secções relevantes..."):
+        with st.spinner("A analisar..."):
             seccoes = get_clean_sections(url_input)
-            
             if seccoes:
-                st.info(f"Filtrados {len(seccoes)} links relevantes. A classificar...")
-                
-                # Forçamos o modelo a ser um "Taxonomista de Conteúdo"
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                prompt = f"""
-                Age como um especialista em SEO e Taxonomia de Media. 
-                O teu objetivo é atribuir a label mais específica possível a partir desta lista:
-                [{LABELS}]
-
-                REGRAS DE CLASSIFICAÇÃO:
-                1. Analisa o nome da pasta no URL. Ex: '/nfl/' é 'American Football', não 'Sports'.
-                2. Se o URL for de notícias gerais mas focar em política (ex: /politics/), usa 'Politics'.
-                3. Ignora URLs que sejam administrativos ou institucionais (mesmo que tenham passado pelo filtro).
-                4. Se o URL for um nome de equipa (ex: /jets/, /yankees/), identifica a modalidade correspondente.
-                5. 'P6' ou 'Page Six' é sempre 'Celebrities'.
-                6. 'Media' neste contexto é 'Marketing'.
-
-                Responde APENAS no formato:
-                URL - LABEL (Breve explicação se necessário)
-
-                LISTA DE URLS:
-                """ + "\n".join(seccoes[:60])
-                
                 try:
+                    # O TRUQUE: Listar modelos e escolher o que estiver disponível
+                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    # Tenta 1.5-flash, depois 1.0-pro, senão o primeiro que houver
+                    best_model = next((m for m in models if "1.5-flash" in m), 
+                                     next((m for m in models if "pro" in m), models[0]))
+                    
+                    st.info(f"Modelo detectado: {best_model}")
+                    model = genai.GenerativeModel(best_model)
+                    
+                    prompt = f"Labels: {LABELS}\nRegras: Sê específico (ex: Jets -> American Football). Ignora links de sistema. Classifica:\n" + "\n".join(seccoes[:50])
                     res = model.generate_content(prompt)
-                    st.subheader("Resultados:")
                     st.markdown(res.text)
                 except Exception as e:
                     st.error(f"Erro na IA: {e}")
-            else:
-                st.error("Não foram encontrados links de categorias limpos.")
+            else: st.error("Nenhum link útil encontrado.")
