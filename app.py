@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-import google.generativeai as genai
+import json
 
 # 1. Configuração da página
 st.set_page_config(page_title="Classificador Expert", layout="wide")
@@ -36,45 +36,54 @@ def get_clean_sections(url):
         st.error(f"Erro no scraping: {e}")
         return []
 
-# 3. Interface de entrada
+def call_gemini_direct(api_key, prompt):
+    # Forçamos a versão v1 (estável) via URL direta
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    headers = {'Content-Type': 'application/json'}
+    
+    response = requests.post(url, headers=headers, data=json.dumps(payload))
+    
+    if response.status_code == 200:
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    else:
+        # Se o Flash falhar, tenta o Pro como backup na mesma URL estável
+        url_pro = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={api_key}"
+        response_pro = requests.post(url_pro, headers=headers, data=json.dumps(payload))
+        if response_pro.status_code == 200:
+            return response_pro.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            raise Exception(f"Erro na API: {response_pro.status_code} - {response_pro.text}")
+
+# 3. Interface
 url_input = st.text_input("URL do Site (ex: https://nypost.com):")
 
 if st.button("Executar Classificação"):
     if not api_key:
         st.error("Falta a API Key na barra lateral!")
     elif url_input:
-        with st.spinner("A processar estrutura e consultando IA..."):
-            
-            # CONFIGURAÇÃO DIRETA
-            genai.configure(api_key=api_key.strip())
-            
+        with st.spinner("A processar estrutura e chamando API estável..."):
             seccoes = get_clean_sections(url_input)
             
             if seccoes:
                 try:
-                    # Usando o nome de modelo que tem maior compatibilidade histórica
-                    # Se 'gemini-1.5-flash' falhar, ele tentará o 'gemini-pro' automaticamente
-                    try:
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                        # Teste rápido de sanidade
-                        model.generate_content("test")
-                    except:
-                        model = genai.GenerativeModel('gemini-pro')
-                    
                     prompt = f"""Age como um Taxonomista. Atribui uma label desta lista [{LABELS}] para cada URL.
                     Responde no formato: URL - LABEL
                     
                     URLs:
-                    {chr(10).join(seccoes[:50])}"""
+                    {" ".join(seccoes[:50])}"""
                     
-                    # Chamada simples sem argumentos complexos para evitar erros de versão
-                    res = model.generate_content(prompt)
+                    resultado = call_gemini_direct(api_key.strip(), prompt)
                     
                     st.subheader("Resultados:")
-                    st.code(res.text)
+                    st.code(resultado)
                     
                 except Exception as e:
-                    st.error(f"Erro na IA: {e}")
-                    st.info("Dica técnica: Verifique se o pacote google-generativeai está instalado corretamente.")
+                    st.error(f"Erro Crítico: {e}")
             else:
-                st.warning("Nenhum link de categoria encontrado.")
+                st.warning("Nenhum link encontrado.")
