@@ -3,13 +3,12 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import google.generativeai as genai
-from google.generativeai.types import RequestOptions
 
-# Configuração da página
+# 1. Configuração da página
 st.set_page_config(page_title="Classificador Expert", layout="wide")
 st.title("🎯 Classificador de Categorias")
 
-# GESTÃO DA API KEY
+# 2. GESTÃO DA API KEY
 api_key = st.sidebar.text_input("Gemini API Key:", type="password") or st.secrets.get("GEMINI_API_KEY")
 
 LABELS = "Adult, American Football, Animals, Anime, Auto, Baseball, Basket, Beauty, Betting, Blog, Business, Casino, Celebrities, Chat Groups, Combat, Cosmetics, Cricket, Crypto, Culinary, Dating, Deco/Arch, E-Commerce, Education, Entertainment, Esoteric, Esports, Fashion, File Sharing, Finance, Football, Games, Golf, Health, Hockey, Horses, Humor, Jobs, Judicial, Legal, Lifestyle, Literature, Loans/Credits, Lottery, Marketing, MMA, Motorsports, Music, News, Politics, Quotes, Radio, Religion, Rugby, Sports, streaming, Technology, Tennis, Tourism, Weather, Well-Being"
@@ -37,44 +36,45 @@ def get_clean_sections(url):
         st.error(f"Erro no scraping: {e}")
         return []
 
-if st.button("Classificar com Precisão"):
-    if not api_key:
-        st.error("Insere a API Key!")
-    elif url_input := st.text_input("URL:", value=st.session_state.get('url', '')): # Pequeno ajuste para persistência
-        pass # Apenas para estruturar o fluxo
-
-url_input = st.text_input("URL do Site (ex: https://nypost.com):", key="url_principal")
+# 3. Interface de entrada
+url_input = st.text_input("URL do Site (ex: https://nypost.com):")
 
 if st.button("Executar Classificação"):
     if not api_key:
-        st.error("Falta a API Key!")
+        st.error("Falta a API Key na barra lateral!")
     elif url_input:
-        with st.spinner("A processar..."):
-            # 1. CONFIGURAÇÃO DA IA (FORÇANDO API V1)
+        with st.spinner("A processar estrutura e consultando IA..."):
+            
+            # CONFIGURAÇÃO DIRETA
             genai.configure(api_key=api_key.strip())
             
             seccoes = get_clean_sections(url_input)
             
             if seccoes:
                 try:
-                    # FORÇAMOS A API A NÃO USAR v1beta PARA EVITAR O ERRO 404
-                    model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+                    # Usando o nome de modelo que tem maior compatibilidade histórica
+                    # Se 'gemini-1.5-flash' falhar, ele tentará o 'gemini-pro' automaticamente
+                    try:
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        # Teste rápido de sanidade
+                        model.generate_content("test")
+                    except:
+                        model = genai.GenerativeModel('gemini-pro')
                     
-                    prompt = f"""Atribui uma label desta lista [{LABELS}] para cada URL:
-                    {chr(10).join(seccoes[:50])}
-                    Formato: URL - LABEL"""
+                    prompt = f"""Age como um Taxonomista. Atribui uma label desta lista [{LABELS}] para cada URL.
+                    Responde no formato: URL - LABEL
                     
-                    # Usamos RequestOptions para garantir a versão da API
-                    res = model.generate_content(
-                        prompt,
-                        request_options=RequestOptions(api_version='v1')
-                    )
+                    URLs:
+                    {chr(10).join(seccoes[:50])}"""
+                    
+                    # Chamada simples sem argumentos complexos para evitar erros de versão
+                    res = model.generate_content(prompt)
                     
                     st.subheader("Resultados:")
                     st.code(res.text)
                     
                 except Exception as e:
                     st.error(f"Erro na IA: {e}")
-                    st.info("Tenta atualizar a biblioteca: pip install -U google-generativeai")
+                    st.info("Dica técnica: Verifique se o pacote google-generativeai está instalado corretamente.")
             else:
-                st.warning("Nenhum link extraído.")
+                st.warning("Nenhum link de categoria encontrado.")
