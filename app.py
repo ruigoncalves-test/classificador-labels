@@ -4,15 +4,14 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import google.generativeai as genai
 
-st.set_page_config(page_title="Classificador Pro", layout="wide")
+st.set_page_config(page_title="Classificador Estável", layout="wide")
 st.title("🏷️ Classificador de Categorias")
 
 # GESTÃO DA API KEY
 api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
 
 if api_key:
-    api_key = api_key.strip()
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=api_key.strip())
 
 # LISTA DE LABELS
 LABELS = "Adult, American Football, Animals, Anime, Auto, Baseball, Basket, Beauty, Betting, Blog, Business, Casino, Celebrities, Chat Groups, Combat, Cosmetics, Cricket, Crypto, Culinary, Dating, Deco/Arch, E-Commerce, Education, Entertainment, Esoteric, Esports, Fashion, File Sharing, Finance, Football, Games, Golf, Health, Hockey, Horses, Humor, Jobs, Judicial, Legal, Lifestyle, Literature, Loans/Credits, Lottery, Marketing, MMA, Motorsports, Music, News, Politics, Quotes, Radio, Religion, Rugby, Sports, streaming, Technology, Tennis, Tourism, Weather, Well-Being"
@@ -28,7 +27,7 @@ def get_sections(url):
         return sorted([l for l in links if len(urlparse(l).path.split('/')) <= 3 and l != url])
     except: return []
 
-url_input = st.text_input("URL do Site (ex: https://nypost.com):")
+url_input = st.text_input("URL do Site:")
 
 if st.button("Classificar"):
     if not api_key: 
@@ -38,15 +37,22 @@ if st.button("Classificar"):
             seccoes = get_sections(url_input)
             
             if seccoes:
-                st.info(f"Encontradas {len(seccoes)} secções. A chamar IA...")
-                # O segredo está aqui: usamos o modelo 1.5-flash que é o atual padrão
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                prompt = f"Instrução: Atribui uma label da lista [{LABELS}] a cada URL abaixo. Formato: URL - Label. URLs:\n" + "\n".join(seccoes[:40])
-                
                 try:
+                    # Tenta encontrar um modelo disponível na tua conta
+                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    
+                    # Seleciona o 1.5-flash se existir, senão o gemini-pro, senão o primeiro da lista
+                    selected_model = 'models/gemini-1.5-flash' if 'models/gemini-1.5-flash' in available_models else \
+                                     'models/gemini-pro' if 'models/gemini-pro' in available_models else \
+                                     available_models[0]
+                    
+                    model = genai.GenerativeModel(selected_model)
+                    st.info(f"A usar modelo: {selected_model}")
+                    
+                    prompt = f"Atribui uma label da lista [{LABELS}] a cada URL (Formato: URL - Label):\n" + "\n".join(seccoes[:40])
                     res = model.generate_content(prompt)
                     st.text_area("Resultados:", value=res.text, height=400)
+                    
                 except Exception as e:
                     st.error(f"Erro na IA: {e}")
             else:
