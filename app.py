@@ -4,17 +4,16 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 import google.generativeai as genai
 
-# CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(page_title="Classificador Híbrido Estável", layout="wide")
+# 1. CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(page_title="Classificador Pro", layout="wide")
 st.title("🛡️ Classificador Inteligente (Lógica + IA)")
 
-# GESTÃO DA API KEY
+# 2. GESTÃO DA API KEY
 api_key = st.secrets.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key:", type="password")
-
 if api_key:
     genai.configure(api_key=api_key.strip())
 
-# DICIONÁRIO DE REGRAS (Lógica local - Funciona sempre!)
+# 3. DICIONÁRIO DE REGRAS (Lógica local)
 MAPA_LOGICO = {
     "American Football": ["nfl", "jets", "giants", "super-bowl", "college-football"],
     "Baseball": ["mlb", "yankees", "mets", "world-series"],
@@ -42,7 +41,6 @@ def get_clean_sections(url):
         soup = BeautifulSoup(r.text, 'html.parser')
         domain = urlparse(url).netloc
         ignore_list = ['/author/', '/contact', '/settings', '/subscribe', '/privacy', '/terms', '/login', '/about']
-        
         links = set()
         for a in soup.find_all('a', href=True):
             full_url = urljoin(url, a['href']).split('?')[0].split('#')[0].rstrip('/')
@@ -55,17 +53,19 @@ def get_clean_sections(url):
     except:
         return []
 
+# 4. INTERFACE
 url_input = st.text_input("URL do Site:")
 
 if st.button("Classificar"):
-    if url_input:
-        with st.spinner("A processar..."):
+    if not url_input:
+        st.error("Insere um URL!")
+    else:
+        with st.spinner("A analisar..."):
             seccoes = get_clean_sections(url_input)
             if seccoes:
                 resultados_finais = []
                 urls_para_ia = []
 
-                # PASSO 1: Tenta Lógica Local
                 for url in seccoes:
                     label = classificar_por_logica(url)
                     if label:
@@ -73,11 +73,24 @@ if st.button("Classificar"):
                     else:
                         urls_para_ia.append(url)
 
-                # PASSO 2: IA Fallback
                 if urls_para_ia:
                     if api_key:
                         try:
                             model = genai.GenerativeModel('gemini-1.5-flash')
-                            prompt = f"Labels: {LABELS}\nClassifica:\n" + "\n".join(urls_para_ia[:30])
+                            prompt = f"Labels: {LABELS}\nClassifica estes URLs:\n" + "\n".join(urls_para_ia[:30])
                             res = model.generate_content(prompt)
-                            resultados
+                            resultados_finais.append("---")
+                            resultados_finais.append("### Classificado por IA:")
+                            resultados_finais.append(res.text)
+                        except Exception as e:
+                            st.warning(f"Erro na IA: {e}")
+                            for u in urls_para_ia:
+                                resultados_finais.append(f"{u} - **News** (Fallback)")
+                    else:
+                        for u in urls_para_ia:
+                            resultados_finais.append(f"{u} - **News** (Sem API)")
+
+                st.subheader("Resultados:")
+                for r in resultados_finais:
+                    st.write(r)
+            else:
